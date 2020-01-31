@@ -1,29 +1,45 @@
 package main
-
 import (
-	"fmt"
-	"net/http"
-	"log"
 	"context"
+	"fmt"
+	"log"
 	"time"
-	"encoding/json"
-	ioutil "io/ioutil"
-
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-  "go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-type UserStructure struct {
-	Email string
+type User struct {
+	Age      int
+	Name     string
+	Email    string
 	Password string
 }
 
-func main () {
+type Service struct {
+	Ctx   context.Context
+	Users *mongo.Collection
+}
+
+func (mainEntity *Service) GetUserByName(name string) (User, error) {
+	filter := bson.D{{"name", name}}
+	var user User
+	err := mainEntity.Users.FindOne(context.TODO(), filter).Decode(&user)
+	return user, err
+}
+
+type TokenEntity struct {
+	Token string
+}
+
+type UserName struct {
+	Name string
+}
+
+func main() {
 	client, err := mongo.NewClient(options.Client().ApplyURI("mongodb://localhost:27017"))
 	if err != nil {
 		log.Fatal("ERROR:", err)
 	}
-
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	err = client.Connect(ctx)
 	if err != nil {
@@ -31,34 +47,14 @@ func main () {
 	} else {
 		fmt.Println("connected to mongo")
 	}
-	// err = client.Ping(ctx, readpref.Primary())
-
-	if err != nil {
-		log.Fatal("ERROR:", err)
+	users := client.Database("task-manager-api").Collection("users")
+	service := Service{
+		Ctx:   ctx,
+		Users: users,
 	}
-
-	collection := client.Database("task-manager-api").Collection("users")
-	fmt.Println(collection)
-
-	var login UserStructure
-	http.Handle("/login", &login)
-	log.Fatal(http.ListenAndServe(":8080", nil))
-	defer client.Disconnect(ctx)
-}
-
-func (login *UserStructure) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := ioutil.ReadAll(r.Body)
-	json.Unmarshal([]byte(data), &login)
-
-	if err != nil {
-		fmt.Println("ERROR:", err)
+	var user, errFind = service.GetUserByName("Artemka")
+	if errFind != nil {
+		fmt.Println("cannot find")
 	}
-
-	doSomething(login)
-
-	w.Write(data)
-}
-
-func doSomething (login *UserStructure) {
-	fmt.Println(*login)
+	fmt.Println(user)
 }
